@@ -91,7 +91,7 @@ PACKAGES_TERMINAL=(
 )
 
 PACKAGES_FONTS=(
-    dejavu-fonts-ttf liberation-fonts-ttf font-awesome6 google-fonts-ttf nerd-fonts noto-fonts-ttf noto-fonts-cjk noto-fonts-ttf-extra noto-fonts emoji terminus-font
+    dejavu-fonts-ttf liberation-fonts-ttf font-awesome6 google-fonts-ttf nerd-fonts noto-fonts-ttf noto-fonts-cjk noto-fonts-ttf-extra noto-fonts-emoji terminus-font
 )
 
 PACKAGES_BUILD=(
