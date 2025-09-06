@@ -91,7 +91,7 @@ PACKAGES_TERMINAL=(
 )
 
 PACKAGES_FONTS=(
-    font-ttf-dejavu font-ttf-liberation font-awesome terminus-font
+    dejavu-fonts-ttf liberation-fonts-ttf font-awesome6 terminus-font
 )
 
 PACKAGES_BUILD=(
