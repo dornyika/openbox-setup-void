@@ -274,4 +274,4 @@ if [ "$ONLY_CONFIG" = false ]; then
     if [ -n "$DISPLAY" ]; then
         obmenu-generator -p -i || msg "Warning: Menu generation failed, will retry on first login"
     else
-        msg "No X display found
+        msg "No X display found"
