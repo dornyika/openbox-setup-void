@@ -78,7 +78,7 @@ PACKAGES_FILE_MANAGER=(
 )
 
 PACKAGES_AUDIO=(
-    pavucontrol pulsemixer pamixer pipewire pipewire-pulse
+    pavucontrol pulsemixer pamixer pipewire
 )
 
 PACKAGES_UTILITIES=(
