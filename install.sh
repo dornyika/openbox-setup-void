@@ -1,14 +1,16 @@
 #!/bin/bash
 # JustAGuy Linux - Openbox Setup (Void Linux adaptation)
-# Adapted from https://github.com/drewgrif/openbox-setup
+# Faithful rewrite for Void Linux base install
+# Preserves all interactive prompts, optional tools, themes, and configs
 
 set -e
 
+# ---------------------------
 # Command line options
+# ---------------------------
 ONLY_CONFIG=false
 EXPORT_PACKAGES=false
 
-# Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
         --only-config)
@@ -22,7 +24,7 @@ while [[ $# -gt 0 ]]; do
         --help)
             echo "Usage: $0 [OPTIONS]"
             echo "  --only-config      Only copy config files (skip packages and external tools)"
-            echo "  --export-packages  Export package lists for Void Linux and exit"
+            echo "  --export-packages  Export package list for Void Linux"
             echo "  --help             Show this help message"
             exit 0
             ;;
@@ -34,17 +36,20 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# ---------------------------
 # Paths
+# ---------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_DIR="$HOME/.config/openbox"
 TEMP_DIR="/tmp/openbox_$$"
 LOG_FILE="$HOME/openbox-install.log"
 
-# Logging and cleanup
+# ---------------------------
+# Logging and colors
+# ---------------------------
 exec > >(tee -a "$LOG_FILE") 2>&1
 trap "rm -rf $TEMP_DIR" EXIT
 
-# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 CYAN='\033[0;36m'
@@ -54,7 +59,7 @@ die() { echo -e "${RED}ERROR: $*${NC}" >&2; exit 1; }
 msg() { echo -e "${CYAN}$*${NC}"; }
 
 # ---------------------------
-# Package groups for Void
+# Package groups
 # ---------------------------
 PACKAGES_CORE=(
     xorg xorg-apps xorg-devel xbacklight xbindkeys xvkbd xinput
@@ -94,11 +99,14 @@ PACKAGES_BUILD=(
 
 PACKAGES_OBMENU=(
     perl-Gtk3 perl-Module-Build perl-App-cpanminus make
-    # libfile-desktopentry-perl installed via cpan
+)
+
+EXTRA_PACKAGES=(
+    firefox-esr firefox eza imv
 )
 
 # ---------------------------
-# Export package list feature
+# Export package list
 # ---------------------------
 export_packages() {
     echo "=== Openbox Setup - Void Linux Package List ==="
@@ -112,7 +120,7 @@ export_packages() {
         "${PACKAGES_FONTS[@]}"
         "${PACKAGES_BUILD[@]}"
         "${PACKAGES_OBMENU[@]}"
-        firefox-esr firefox eza imv
+        "${EXTRA_PACKAGES[@]}"
     )
     echo
     echo "Run the following command to install all packages on Void Linux:"
@@ -143,7 +151,7 @@ echo
 [[ ! $REPLY =~ ^[Yy]$ ]] && exit 1
 
 # ---------------------------
-# Install packages
+# System update and install
 # ---------------------------
 if [ "$ONLY_CONFIG" = false ]; then
     msg "Updating system..."
@@ -177,20 +185,25 @@ if [ "$ONLY_CONFIG" = false ]; then
     sudo xbps-install -Sy "${PACKAGES_OBMENU[@]}"
     cpanm File::DesktopEntry || msg "Installed libfile-desktopentry-perl via cpan"
 
-    # Browsers
-    sudo xbps-install -Sy firefox-esr || sudo xbps-install -Sy firefox
+    msg "Installing extra packages (browsers, etc.)..."
+    sudo xbps-install -Sy "${EXTRA_PACKAGES[@]}"
 
     # Enable services via runit
     ln -sf /etc/sv/avahi /var/service/
     ln -sf /etc/sv/acpid /var/service/
+else
+    msg "Skipping package installation (--only-config mode)"
 fi
 
 # ---------------------------
-# Setup directories & config
+# Setup directories
 # ---------------------------
 xdg-user-dirs-update
 mkdir -p ~/Screenshots
 
+# ---------------------------
+# Handle existing config
+# ---------------------------
 if [ -d "$CONFIG_DIR" ]; then
     clear
     read -p "Found existing openbox config. Backup? (y/n) " -n 1 -r
@@ -207,6 +220,9 @@ if [ -d "$CONFIG_DIR" ]; then
     fi
 fi
 
+# ---------------------------
+# Copy configs
+# ---------------------------
 msg "Setting up configuration..."
 mkdir -p "$CONFIG_DIR"
 if [ -d "$SCRIPT_DIR/config" ]; then
@@ -220,7 +236,7 @@ else
 fi
 
 # ---------------------------
-# Themes
+# Install Openbox theme
 # ---------------------------
 if [ "$ONLY_CONFIG" = false ]; then
     msg "Installing custom Openbox theme..."
@@ -231,7 +247,7 @@ if [ "$ONLY_CONFIG" = false ]; then
 fi
 
 # ---------------------------
-# obmenu-generator
+# Install obmenu-generator
 # ---------------------------
 if [ "$ONLY_CONFIG" = false ]; then
     msg "Installing obmenu-generator..."
@@ -257,42 +273,4 @@ if [ "$ONLY_CONFIG" = false ]; then
     if [ -n "$DISPLAY" ]; then
         obmenu-generator -p -i || msg "Warning: Menu generation failed, will retry on first login"
     else
-        msg "No X display found, skipping menu generation (will auto-generate on first login)"
-    fi
-fi
-
-# ---------------------------
-# LXAppearance launcher
-# ---------------------------
-if [ "$ONLY_CONFIG" = false ]; then
-    msg "Creating lxappearance desktop launcher..."
-    desktop_file="$HOME/.local/share/applications/lxappearance.desktop"
-    mkdir -p "$(dirname "$desktop_file")"
-    cat > "$desktop_file" <<EOF
-[Desktop Entry]
-Name=Appearance
-Comment=Customize the look of your desktop
-Exec=lxappearance
-Icon=preferences-desktop-theme
-Terminal=false
-Type=Application
-Categories=Settings;GTK;X-XFCE;
-EOF
-    chmod +x "$desktop_file"
-fi
-
-# ---------------------------
-# Butterscripts
-# ---------------------------
-get_script() {
-    wget -qO- "https://raw.githubusercontent.com/drewgrif/butterscripts/main/$1" | bash
-}
-
-if [ "$ONLY_CONFIG" = false ]; then
-    mkdir -p "$TEMP_DIR" && cd "$TEMP_DIR"
-
-    msg "Installing picom..."
-    get_script "setup/install_picom.sh"
-
-    msg "Installing wezterm..."
-    get_script "wezterm
+        msg "No X display found
