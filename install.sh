@@ -103,7 +103,7 @@ PACKAGES_OBMENU=(
 )
 
 EXTRA_PACKAGES=(
-    firefox-esr firefox eza imv
+    firefox browsh imv
 )
 
 # ---------------------------
