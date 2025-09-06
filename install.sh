@@ -1,397 +1,131 @@
 #!/bin/bash
-
-# JustAGuy Linux - Openbox Setup
-# https://github.com/drewgrif/openbox-setup
+# --------------------------------------------------
+#  Openbox Setup Script for Void Linux
+#  Adapted from drewgrif/openbox-setup (Debian-based) by ChatGPT
+# --------------------------------------------------
 
 set -e
 
-# Command line options
-ONLY_CONFIG=false
-EXPORT_PACKAGES=false
+echo "[*] Updating system..."
+sudo xbps-install -Su
 
-# Parse arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --only-config)
-            ONLY_CONFIG=true
-            shift
-            ;;
-        --export-packages)
-            EXPORT_PACKAGES=true
-            shift
-            ;;
-        --help)
-            echo "Usage: $0 [OPTIONS]"
-            echo "  --only-config      Only copy config files (skip packages and external tools)"
-            echo "  --export-packages  Export package lists for different distros and exit"
-            echo "  --help            Show this help message"
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1"
-            echo "Use --help for usage information"
-            exit 1
-            ;;
-    esac
-done
+# --------------------------------------------------
+# Essential system + desktop packages
+# --------------------------------------------------
+echo "[*] Installing core desktop environment..."
+sudo xbps-install -S \
+  xorg xorg-minimal xinit \
+  openbox obconf obmenu-generator \
+  picom polybar \
+  thunar xfce4-appfinder \
+  firefox-esr geany \
+  dunst rofi \
+  pipewire wireplumber alsa-utils \
+  flameshot redshift \
+  wezterm tilix \
+  micro fzf fastfetch \
+  feh lxappearance \
+  sxiv papirus-icon-theme \
+  git curl wget unzip \
+  zsh starship \
+  neofetch htop pavucontrol \
+  gvfs gvfs-smb gvfs-mtp
 
-# Paths
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_DIR="$HOME/.config/openbox"
-TEMP_DIR="/tmp/openbox_$$"
-LOG_FILE="$HOME/openbox-install.log"
+# --------------------------------------------------
+# Fonts
+# --------------------------------------------------
+echo "[*] Installing fonts..."
+sudo xbps-install -S font-dejavu font-noto-ttf font-awesome
+mkdir -p ~/.local/share/fonts
 
-# Logging and cleanup
-exec > >(tee -a "$LOG_FILE") 2>&1
-trap "rm -rf $TEMP_DIR" EXIT
+# Nerd Fonts (FiraCode as example)
+cd /tmp
+if [ ! -f "FiraCode.zip" ]; then
+  wget -O FiraCode.zip https://github.com/ryanoasis/nerd-fonts/releases/latest/download/FiraCode.zip
+  unzip -o FiraCode.zip -d ~/.local/share/fonts
+fi
+fc-cache -fv
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+# --------------------------------------------------
+# Themes & Icons
+# --------------------------------------------------
+echo "[*] Installing Orchis and Colloid themes..."
+mkdir -p ~/.themes ~/.icons
 
-die() { echo -e "${RED}ERROR: $*${NC}" >&2; exit 1; }
-msg() { echo -e "${CYAN}$*${NC}"; }
-
-# Export package lists for different distros
-export_packages() {
-    echo "=== Openbox Setup - Package Lists for Different Distributions ==="
-    echo
-    
-    # Combine all packages
-    local all_packages=(
-        "${PACKAGES_CORE[@]}"
-        "${PACKAGES_UI[@]}"
-        "${PACKAGES_FILE_MANAGER[@]}"
-        "${PACKAGES_AUDIO[@]}"
-        "${PACKAGES_UTILITIES[@]}"
-        "${PACKAGES_TERMINAL[@]}"
-        "${PACKAGES_FONTS[@]}"
-        "${PACKAGES_BUILD[@]}"
-    )
-    
-    echo "DEBIAN/UBUNTU:"
-    echo "sudo apt install ${all_packages[*]}"
-    echo
-    
-    # Arch equivalents
-    local arch_packages=(
-        "xorg-server xorg-xinit xorg-xbacklight xbindkeys xvkbd xorg-xinput"
-        "base-devel openbox tint2 xdotool"
-        "libnotify"
-        "polybar rofi dunst feh lxappearance network-manager-applet"
-        "thunar thunar-archive-plugin thunar-volman"
-        "gvfs dialog mtools smbclient cifs-utils ripgrep fd unzip"
-        "pavucontrol pulsemixer pamixer pipewire-pulse"
-        "avahi acpi acpid xfce4-power-manager xfce4-appfinder flameshot"
-        "qimgv firefox micro xdg-user-dirs-gtk tilix"
-        "eza"
-        "ttf-font-awesome terminus-font"
-        "cmake meson ninja curl pkgconf"
-    )
-    
-    echo "ARCH LINUX:"
-    echo "sudo pacman -S ${arch_packages[*]}"
-    echo
-    
-    # Fedora equivalents
-    local fedora_packages=(
-        "xorg-x11-server-Xorg xorg-x11-xinit xbacklight xbindkeys xvkbd xinput"
-        "gcc make git openbox tint2 xdotool"
-        "libnotify"
-        "polybar rofi dunst feh lxappearance NetworkManager-gnome"
-        "thunar thunar-archive-plugin thunar-volman"
-        "gvfs dialog mtools samba-client cifs-utils ripgrep fd-find unzip"
-        "pavucontrol pulsemixer pamixer pipewire-pulseaudio"
-        "avahi acpi acpid xfce4-power-manager xfce4-appfinder flameshot"
-        "qimgv firefox micro xdg-user-dirs-gtk tilix"
-        "eza"
-        "fontawesome-fonts terminus-font"
-        "cmake meson ninja-build curl pkgconfig"
-    )
-    
-    echo "FEDORA:"
-    echo "sudo dnf install ${fedora_packages[*]}"
-    echo
-    
-    echo "NOTE: Some packages may have different names or may not be available"
-    echo "in all distributions. You may need to:"
-    echo "  - Find equivalent packages in your distro's repositories"
-    echo "  - Install some tools from source"
-    echo "  - Use alternative package managers (AUR for Arch, Flatpak, etc.)"
-    echo
-    echo "After installing packages, you can use:"
-    echo "  $0 --only-config    # To copy just the Openbox configuration files"
-}
-
-# Check if we should export packages and exit
-if [ "$EXPORT_PACKAGES" = true ]; then
-    export_packages
-    exit 0
+# Orchis GTK theme
+if [ ! -d ~/.themes/Orchis-theme ]; then
+  git clone https://github.com/vinceliuice/Orchis-theme.git ~/.themes/Orchis-theme
+  ~/.themes/Orchis-theme/install.sh --theme dark
 fi
 
-# Banner
-clear
-echo -e "${CYAN}"
-echo " +-+-+-+-+-+-+-+-+-+-+-+-+-+ "
-echo " |j|u|s|t|a|g|u|y|l|i|n|u|x| "
-echo " +-+-+-+-+-+-+-+-+-+-+-+-+-+ "
-echo " |o|p|e|n|b|o|x| |s|e|t|u|p| "
-echo " +-+-+-+-+-+-+-+-+-+-+-+-+-+ "
-echo -e "${NC}\n"
-
-read -p "Install Openbox? (y/n) " -n 1 -r
-echo
-[[ ! $REPLY =~ ^[Yy]$ ]] && exit 1
-
-# Update system
-if [ "$ONLY_CONFIG" = false ]; then
-    msg "Updating system..."
-    sudo apt-get update && sudo apt-get upgrade -y
-else
-    msg "Skipping system update (--only-config mode)"
+# Colloid icon theme
+if [ ! -d ~/.icons/Colloid-icon-theme ]; then
+  git clone https://github.com/vinceliuice/Colloid-icon-theme.git ~/.icons/Colloid-icon-theme
+  ~/.icons/Colloid-icon-theme/install.sh
 fi
 
-# Package groups for better organization
-PACKAGES_CORE=(
-    xorg xorg-dev xbacklight xbindkeys xvkbd xinput
-    build-essential openbox tint2 xdotool
-    libnotify-bin libnotify-dev
-)
-
-PACKAGES_UI=(
-    polybar rofi dunst feh lxappearance network-manager-gnome
-)
-
-PACKAGES_FILE_MANAGER=(
-    thunar thunar-archive-plugin thunar-volman
-    gvfs-backends dialog mtools smbclient cifs-utils fd-find unzip
-)
-
-PACKAGES_AUDIO=(
-    pavucontrol pulsemixer pamixer pipewire-audio
-)
-
-PACKAGES_UTILITIES=(
-    avahi-daemon acpi acpid xfce4-power-manager xfce4-appfinder
-    flameshot qimgv micro xdg-user-dirs-gtk
-)
-
-PACKAGES_TERMINAL=(
-    # exa/eza handled separately due to debian/ubuntu differences
-)
-
-PACKAGES_FONTS=(
-    fonts-recommended fonts-font-awesome fonts-terminus
-)
-
-PACKAGES_BUILD=(
-    cmake meson ninja-build curl pkg-config
-)
-
-# Install packages by group
-if [ "$ONLY_CONFIG" = false ]; then
-    msg "Installing core packages..."
-    sudo apt-get install -y "${PACKAGES_CORE[@]}" || die "Failed to install core packages"
-
-    msg "Installing UI components..."
-    sudo apt-get install -y "${PACKAGES_UI[@]}" || die "Failed to install UI packages"
-
-    msg "Installing file manager..."
-    sudo apt-get install -y "${PACKAGES_FILE_MANAGER[@]}" || die "Failed to install file manager"
-
-    msg "Installing audio support..."
-    sudo apt-get install -y "${PACKAGES_AUDIO[@]}" || die "Failed to install audio packages"
-
-    msg "Installing system utilities..."
-    sudo apt-get install -y "${PACKAGES_UTILITIES[@]}" || die "Failed to install utilities"
-    
-    # Try firefox-esr first (Debian), then firefox (Ubuntu)
-    sudo apt-get install -y firefox-esr 2>/dev/null || sudo apt-get install -y firefox 2>/dev/null || msg "Note: firefox not available, skipping..."
-    
-    # Try exa first (Debian 12), then eza (newer Ubuntu)
-    sudo apt-get install -y exa 2>/dev/null || sudo apt-get install -y eza 2>/dev/null || msg "Note: exa/eza not available, skipping..."
-
-    msg "Installing fonts..."
-    sudo apt-get install -y "${PACKAGES_FONTS[@]}" || die "Failed to install fonts"
-
-    msg "Installing build dependencies..."
-    sudo apt-get install -y "${PACKAGES_BUILD[@]}" || die "Failed to install build tools"
-
-    # Install obmenu-generator dependencies
-    msg "Installing obmenu-generator dependencies..."
-    sudo apt-get install -y libgtk3-perl libmodule-build-perl libdata-dump-perl \
-        libfile-desktopentry-perl cpanminus make
-
-    # Enable services
-    sudo systemctl enable avahi-daemon acpid
-else
-    msg "Skipping package installation (--only-config mode)"
+# --------------------------------------------------
+# ZSH + Oh My Zsh + Starship
+# --------------------------------------------------
+echo "[*] Setting up zsh environment..."
+if [ ! -d ~/.oh-my-zsh ]; then
+  sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
 fi
 
-# Setup directories
-xdg-user-dirs-update
-mkdir -p ~/Screenshots
-
-# Handle existing config
-if [ -d "$CONFIG_DIR" ]; then
-    clear
-    read -p "Found existing openbox config. Backup? (y/n) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        mv "$CONFIG_DIR" "$CONFIG_DIR.bak.$(date +%s)"
-        msg "Backed up existing config"
-    else
-        clear
-        read -p "Overwrite without backup? (y/n) " -n 1 -r
-        echo
-        [[ $REPLY =~ ^[Yy]$ ]] || die "Installation cancelled"
-        rm -rf "$CONFIG_DIR"
-    fi
+# Starship prompt
+if ! command -v starship >/dev/null; then
+  curl -sS https://starship.rs/install.sh | sh -s -- -y
 fi
 
-# Copy configs
-msg "Setting up configuration..."
-mkdir -p "$CONFIG_DIR"
-
-# Copy openbox configuration files from config directory
-if [ -d "$SCRIPT_DIR/config" ]; then
-    cp -a "$SCRIPT_DIR/config/." "$CONFIG_DIR/" || die "Failed to copy openbox configuration"
-    
-    # Replace placeholder in menu.xml with actual home directory
-    if [ -f "$CONFIG_DIR/menu.xml" ]; then
-        sed -i "s|USER_HOME_DIR|$HOME|g" "$CONFIG_DIR/menu.xml"
-        msg "Updated menu.xml with user-specific paths"
-    fi
-else
-    die "config directory not found"
-fi
-
-# Install custom Openbox theme
-if [ "$ONLY_CONFIG" = false ]; then
-    msg "Installing custom Openbox theme..."
-    mkdir -p ~/.themes
-    if [ -d "$SCRIPT_DIR/config/themes/Simply_Circles_Dark" ]; then
-        cp -r "$SCRIPT_DIR/config/themes/Simply_Circles_Dark" ~/.themes/
-    fi
-fi
-
-# Install obmenu-generator (only if not --only-config)
-if [ "$ONLY_CONFIG" = false ]; then
-    msg "Installing obmenu-generator..."
-    mkdir -p "$TEMP_DIR"
-    cd "$TEMP_DIR"
-
-    # Install Linux-DesktopFiles
-    git clone https://github.com/trizen/Linux-DesktopFiles.git || die "Failed to clone Linux-DesktopFiles"
-    cd Linux-DesktopFiles
-    perl Build.PL || die "Failed to configure Linux-DesktopFiles"
-    ./Build || die "Failed to build Linux-DesktopFiles"
-    ./Build test || msg "Warning: Tests failed but continuing..."
-    sudo ./Build install || die "Failed to install Linux-DesktopFiles"
-    cd "$TEMP_DIR"
-
-    # Setup obmenu-generator
-    mkdir -p ~/.local/bin/
-    mkdir -p ~/.config/obmenu-generator
-
-    git clone https://github.com/trizen/obmenu-generator.git
-    cp obmenu-generator/obmenu-generator ~/.local/bin/
-
-    # Use schema.pl from config if it exists
-    if [ -f "$CONFIG_DIR/obmenu/schema.pl" ]; then
-        cp "$CONFIG_DIR/obmenu/schema.pl" ~/.config/obmenu-generator/
-    fi
-
-    # Generate Openbox menu
-    export PATH="$HOME/.local/bin:$PATH"
-    # Check if running in X session before generating menu
-    if [ -n "$DISPLAY" ]; then
-        obmenu-generator -p -i || msg "Warning: Menu generation failed, will retry on first login"
-    else
-        msg "No X display found, skipping menu generation (will auto-generate on first login)"
-    fi
-fi
-
-# Create LXAppearance Launcher
-if [ "$ONLY_CONFIG" = false ]; then
-    msg "Creating lxappearance desktop launcher..."
-    
-    desktop_file="$HOME/.local/share/applications/lxappearance.desktop"
-    mkdir -p "$(dirname "$desktop_file")"
-    
-    cat > "$desktop_file" <<EOF
-[Desktop Entry]
-Name=Appearance
-Comment=Customize the look of your desktop
-Exec=lxappearance
-Icon=preferences-desktop-theme
-Terminal=false
-Type=Application
-Categories=Settings;GTK;X-XFCE;
+# Custom zshrc
+cat > ~/.zshrc <<'EOF'
+export ZSH="$HOME/.oh-my-zsh"
+ZSH_THEME="agnoster"
+plugins=(git fzf)
+source $ZSH/oh-my-zsh.sh
+eval "$(starship init zsh)"
 EOF
-    
-    chmod +x "$desktop_file"
-fi
 
-# Butterscript helper
-get_script() {
-    wget -qO- "https://raw.githubusercontent.com/drewgrif/butterscripts/main/$1" | bash
-}
+chsh -s /bin/zsh
 
-# Install essential components
-if [ "$ONLY_CONFIG" = false ]; then
-    mkdir -p "$TEMP_DIR" && cd "$TEMP_DIR"
+# --------------------------------------------------
+# Config Files
+# --------------------------------------------------
+echo "[*] Copying configs..."
+cd ~/openbox-setup
 
-    msg "Installing picom..."
-    get_script "setup/install_picom.sh"
+mkdir -p ~/.config
+cp -r config/* ~/.config/
 
-    msg "Installing wezterm..."
-    get_script "wezterm/install_wezterm.sh"
+mkdir -p ~/.config/openbox
+cp -r openbox/* ~/.config/openbox/
 
-    msg "Installing fonts..."
-    get_script "theming/install_nerdfonts.sh"
+# --------------------------------------------------
+# Wallpapers
+# --------------------------------------------------
+mkdir -p ~/Pictures/wallpapers
+cp -r wallpapers/* ~/Pictures/wallpapers/
 
-    msg "Installing themes..."
-    get_script "theming/install_theme.sh"
+# --------------------------------------------------
+# Runit services
+# --------------------------------------------------
+echo "[*] Enabling services (runit)..."
+sudo ln -sf /etc/sv/dbus /var/service/
+sudo ln -sf /etc/sv/pipewire /var/service/
+sudo ln -sf /etc/sv/wireplumber /var/service/
 
-    msg "Downloading wallpaper directory..."
-    cd "$CONFIG_DIR"
-    git clone --depth 1 --filter=blob:none --sparse https://github.com/drewgrif/butterscripts.git "$TEMP_DIR/butterscripts-wallpaper" || die "Failed to clone butterscripts"
-    cd "$TEMP_DIR/butterscripts-wallpaper"
-    git sparse-checkout set wallpaper || die "Failed to set sparse-checkout"
-    cp -r wallpaper "$CONFIG_DIR/" || die "Failed to copy wallpaper directory"
+# --------------------------------------------------
+# X init
+# --------------------------------------------------
+echo "[*] Creating ~/.xinitrc..."
+cat > ~/.xinitrc <<EOF
+#!/bin/sh
+exec openbox-session
+EOF
+chmod +x ~/.xinitrc
 
-    msg "Downloading display manager installer..."
-    wget -O "$TEMP_DIR/install_lightdm.sh" "https://raw.githubusercontent.com/drewgrif/butterscripts/main/system/install_lightdm.sh"
-    chmod +x "$TEMP_DIR/install_lightdm.sh"
-    msg "Running display manager installer..."
-    # Run in current terminal session to preserve interactivity
-    bash "$TEMP_DIR/install_lightdm.sh"
-
-    # Optional tools
-    clear
-    read -p "Install optional tools (browsers, editors, etc)? (y/n) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        msg "Downloading optional tools installer..."
-        wget -O "$TEMP_DIR/optional_tools.sh" "https://raw.githubusercontent.com/drewgrif/butterscripts/main/setup/optional_tools.sh"
-        chmod +x "$TEMP_DIR/optional_tools.sh"
-        msg "Running optional tools installer..."
-        # Run in current terminal session to preserve interactivity
-        if bash "$TEMP_DIR/optional_tools.sh"; then
-            msg "Optional tools completed successfully"
-        else
-            msg "Optional tools exited (this is normal if cancelled by user)"
-        fi
-    fi
-else
-    msg "Skipping external tool installation (--only-config mode)"
-fi
-
+# --------------------------------------------------
 # Done
-echo -e "\n${GREEN}Installation complete!${NC}"
-echo "1. Log out and select 'Openbox' from your display manager"
-echo "2. Right-click on desktop to access menu"
-echo "3. Use Super+Space for rofi launcher"
+# --------------------------------------------------
+echo "[*] Installation complete!"
+echo "Reboot, log in, and run 'startx' to enter your new Openbox desktop."
