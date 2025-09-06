@@ -73,7 +73,7 @@ PACKAGES_UI=(
 )
 
 PACKAGES_FILE_MANAGER=(
-    thunar thunar-archive-plugin thunar-volman
+    Thunar thunar-archive-plugin thunar-volman
     gvfs dialog mtools samba cifs-utils fd unzip
 )
 
