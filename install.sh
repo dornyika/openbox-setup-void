@@ -99,7 +99,7 @@ PACKAGES_BUILD=(
 )
 
 PACKAGES_OBMENU=(
-    perl-Gtk3 perl-Module-Build perl-App-cpanminus make
+    perl-Gtk3 perl-Module-Build cpanminus make
 )
 
 EXTRA_PACKAGES=(
