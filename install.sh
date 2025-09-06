@@ -62,9 +62,10 @@ msg() { echo -e "${CYAN}$*${NC}"; }
 # Package groups
 # ---------------------------
 PACKAGES_CORE=(
-    xorg xorg-apps xorg-devel xbacklight xbindkeys xvkbd xinput
+xorg xorg-apps xbacklight xbindkeys xvkbd xinput
     base-devel openbox tint2 xdotool
     libnotify libnotify-devel
+    xorgproto libX11-devel libXext-devel libXft-devel libXinerama-devel libXrandr-devel libXrender-devel libXt-devel libXcursor-devel
 )
 
 PACKAGES_UI=(
