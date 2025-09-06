@@ -1,234 +1,298 @@
 #!/bin/bash
-# ============================================================
-#  Full Openbox Setup for Void Linux (glibc)
-#  Faithful, feature-rich rewrite inspired by drewgrif/openbox-setup
-#  Maintains the "kitchen sink" spirit: themes, icons, fonts,
-#  Openbox stack, zsh/oh-my-zsh/starship, services, wallpapers, etc.
-# ============================================================
+# JustAGuy Linux - Openbox Setup (Void Linux adaptation)
+# Adapted from https://github.com/drewgrif/openbox-setup
 
-set -euo pipefail
+set -e
 
-# ---------- Helpers ----------
-die() { echo "ERROR: $*" >&2; exit 1; }
-have() { command -v "$1" >/dev/null 2>&1; }
+# Command line options
+ONLY_CONFIG=false
+EXPORT_PACKAGES=false
 
-REPO_DIR="${REPO_DIR:-$HOME/openbox-setup}"   # path to the cloned repo
-USER_SHELL="${USER_SHELL:-/bin/zsh}"          # default shell to set for user
-INSTALL_LIGHTDM="${INSTALL_LIGHTDM:-false}"   # set true to install LightDM
-AUTOLOGIN_USER="${AUTOLOGIN_USER:-$USER}"     # user for autologin if enabled
-NITROGEN_WALL="${NITROGEN_WALL:-}"           # optional path to a wallpaper
-
-echo "[*] Starting full Openbox setup for Void Linux"
-[ -d "$REPO_DIR" ] || echo "[*] Note: REPO_DIR '$REPO_DIR' not found; config copy steps will be skipped if absent."
-
-# ---------- Sanity ----------
-if [ "$(id -u)" -eq 0 ]; then
-  echo "[*] Running as root. Will proceed, but recommends running as your user with sudo."
-fi
-
-# ---------- Update indexes ----------
-echo "[1/12] Updating system indexes and packages..."
-sudo xbps-install -Sy || sudo xbps-install -S
-sudo xbps-install -Su
-
-# ---------- Core X11 + Desktop stack ----------
-echo "[2/12] Installing Xorg and Openbox desktop stack..."
-sudo xbps-install -S \
-  xorg xorg-minimal xinit \
-  mesa-dri mesa-vulkan-intel mesa-vulkan-radeon vulkan-loader \
-  openbox obconf obmenu-generator \
-  picom polybar \
-  rofi dunst \
-  thunar thunar-archive-plugin thunar-volman gvfs gvfs-mtp gvfs-smb \
-  xfce4-appfinder \
-  wezterm tilix \
-  pavucontrol pipewire wireplumber alsa-utils \
-  flameshot redshift \
-  nitrogen feh lxappearance \
-  neovim geany micro \
-  fastfetch neofetch htop fzf ripgrep fd \
-  git curl wget unzip tar xz zip \
-  python3 pipx \
-  papirus-icon-theme \
-  imv sxiv \
-  xclip xsel \
-  network-manager-applet \
-  dbus udisks2 udiskie
-
-# Enable runit services needed at login time
-echo "[3/12] Enabling runit services..."
-for svc in dbus pipewire wireplumber udisksd; do
-  [ -e "/etc/sv/$svc" ] && sudo ln -sf "/etc/sv/$svc" /var/service/ || true
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --only-config)
+            ONLY_CONFIG=true
+            shift
+            ;;
+        --export-packages)
+            EXPORT_PACKAGES=true
+            shift
+            ;;
+        --help)
+            echo "Usage: $0 [OPTIONS]"
+            echo "  --only-config      Only copy config files (skip packages and external tools)"
+            echo "  --export-packages  Export package lists for Void Linux and exit"
+            echo "  --help             Show this help message"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
 done
 
-# ---------- Browsers (you can add more if you want) ----------
-echo "[4/12] Installing browsers..."
-sudo xbps-install -S firefox-esr qutebrowser
+# Paths
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_DIR="$HOME/.config/openbox"
+TEMP_DIR="/tmp/openbox_$$"
+LOG_FILE="$HOME/openbox-install.log"
 
-# ---------- Optional: Display Manager (LightDM) ----------
-if [ "$INSTALL_LIGHTDM" = "true" ]; then
-  echo "[5/12] Installing LightDM + greeter (optional block enabled)..."
-  sudo xbps-install -S lightdm lightdm-gtk3-greeter
-  [ -e /etc/sv/lightdm ] && sudo ln -sf /etc/sv/lightdm /var/service/ || true
+# Logging and cleanup
+exec > >(tee -a "$LOG_FILE") 2>&1
+trap "rm -rf $TEMP_DIR" EXIT
 
-  # Configure LightDM autologin if requested
-  if [ -n "$AUTOLOGIN_USER" ]; then
-    echo "[*] Configuring LightDM autologin for user: $AUTOLOGIN_USER"
-    sudo sed -i \
-      -e "s/^#*autologin-user=.*/autologin-user=$AUTOLOGIN_USER/" \
-      -e "s/^#*autologin-session=.*/autologin-session=openbox/" \
-      /etc/lightdm/lightdm.conf || true
-  fi
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+die() { echo -e "${RED}ERROR: $*${NC}" >&2; exit 1; }
+msg() { echo -e "${CYAN}$*${NC}"; }
+
+# ---------------------------
+# Package groups for Void
+# ---------------------------
+PACKAGES_CORE=(
+    xorg xorg-apps xorg-devel xbacklight xbindkeys xvkbd xinput
+    base-devel openbox tint2 xdotool
+    libnotify libnotify-devel
+)
+
+PACKAGES_UI=(
+    polybar rofi dunst feh lxappearance network-manager-applet
+)
+
+PACKAGES_FILE_MANAGER=(
+    thunar thunar-archive-plugin thunar-volman
+    gvfs dialog mtools samba cifs-utils fd unzip
+)
+
+PACKAGES_AUDIO=(
+    pavucontrol pulsemixer pamixer pipewire pipewire-pulse
+)
+
+PACKAGES_UTILITIES=(
+    avahi acpi acpid xfce4-power-manager xfce4-appfinder
+    flameshot imv micro xdg-user-dirs-gtk
+)
+
+PACKAGES_TERMINAL=(
+    eza
+)
+
+PACKAGES_FONTS=(
+    font-ttf-dejavu font-ttf-liberation font-awesome terminus-font
+)
+
+PACKAGES_BUILD=(
+    cmake meson ninja curl pkg-config
+)
+
+PACKAGES_OBMENU=(
+    perl-Gtk3 perl-Module-Build perl-App-cpanminus make
+    # libfile-desktopentry-perl installed via cpan
+)
+
+# ---------------------------
+# Export package list feature
+# ---------------------------
+export_packages() {
+    echo "=== Openbox Setup - Void Linux Package List ==="
+    local all_packages=(
+        "${PACKAGES_CORE[@]}"
+        "${PACKAGES_UI[@]}"
+        "${PACKAGES_FILE_MANAGER[@]}"
+        "${PACKAGES_AUDIO[@]}"
+        "${PACKAGES_UTILITIES[@]}"
+        "${PACKAGES_TERMINAL[@]}"
+        "${PACKAGES_FONTS[@]}"
+        "${PACKAGES_BUILD[@]}"
+        "${PACKAGES_OBMENU[@]}"
+        firefox-esr firefox eza imv
+    )
+    echo
+    echo "Run the following command to install all packages on Void Linux:"
+    echo
+    echo "sudo xbps-install -Sy ${all_packages[*]}"
+    echo
+}
+
+if [ "$EXPORT_PACKAGES" = true ]; then
+    export_packages
+    exit 0
+fi
+
+# ---------------------------
+# Banner
+# ---------------------------
+clear
+echo -e "${CYAN}"
+echo " +-+-+-+-+-+-+-+-+-+-+-+-+-+ "
+echo " |j|u|s|t|a|g|u|y|l|i|n|u|x| "
+echo " +-+-+-+-+-+-+-+-+-+-+-+-+-+ "
+echo " |o|p|e|n|b|o|x| |s|e|t|u|p| "
+echo " +-+-+-+-+-+-+-+-+-+-+-+-+-+ "
+echo -e "${NC}\n"
+
+read -p "Install Openbox? (y/n) " -n 1 -r
+echo
+[[ ! $REPLY =~ ^[Yy]$ ]] && exit 1
+
+# ---------------------------
+# Install packages
+# ---------------------------
+if [ "$ONLY_CONFIG" = false ]; then
+    msg "Updating system..."
+    sudo xbps-install -Syu
+
+    msg "Installing core packages..."
+    sudo xbps-install -Sy "${PACKAGES_CORE[@]}"
+
+    msg "Installing UI components..."
+    sudo xbps-install -Sy "${PACKAGES_UI[@]}"
+
+    msg "Installing file manager..."
+    sudo xbps-install -Sy "${PACKAGES_FILE_MANAGER[@]}"
+
+    msg "Installing audio support..."
+    sudo xbps-install -Sy "${PACKAGES_AUDIO[@]}"
+
+    msg "Installing utilities..."
+    sudo xbps-install -Sy "${PACKAGES_UTILITIES[@]}"
+
+    msg "Installing terminal tools..."
+    sudo xbps-install -Sy "${PACKAGES_TERMINAL[@]}"
+
+    msg "Installing fonts..."
+    sudo xbps-install -Sy "${PACKAGES_FONTS[@]}"
+
+    msg "Installing build tools..."
+    sudo xbps-install -Sy "${PACKAGES_BUILD[@]}"
+
+    msg "Installing obmenu-generator dependencies..."
+    sudo xbps-install -Sy "${PACKAGES_OBMENU[@]}"
+    cpanm File::DesktopEntry || msg "Installed libfile-desktopentry-perl via cpan"
+
+    # Browsers
+    sudo xbps-install -Sy firefox-esr || sudo xbps-install -Sy firefox
+
+    # Enable services via runit
+    ln -sf /etc/sv/avahi /var/service/
+    ln -sf /etc/sv/acpid /var/service/
+fi
+
+# ---------------------------
+# Setup directories & config
+# ---------------------------
+xdg-user-dirs-update
+mkdir -p ~/Screenshots
+
+if [ -d "$CONFIG_DIR" ]; then
+    clear
+    read -p "Found existing openbox config. Backup? (y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        mv "$CONFIG_DIR" "$CONFIG_DIR.bak.$(date +%s)"
+        msg "Backed up existing config"
+    else
+        clear
+        read -p "Overwrite without backup? (y/n) " -n 1 -r
+        echo
+        [[ $REPLY =~ ^[Yy]$ ]] || die "Installation cancelled"
+        rm -rf "$CONFIG_DIR"
+    fi
+fi
+
+msg "Setting up configuration..."
+mkdir -p "$CONFIG_DIR"
+if [ -d "$SCRIPT_DIR/config" ]; then
+    cp -a "$SCRIPT_DIR/config/." "$CONFIG_DIR/" || die "Failed to copy openbox configuration"
+    if [ -f "$CONFIG_DIR/menu.xml" ]; then
+        sed -i "s|USER_HOME_DIR|$HOME|g" "$CONFIG_DIR/menu.xml"
+        msg "Updated menu.xml with user-specific paths"
+    fi
 else
-  echo "[*] Skipping LightDM. You can set INSTALL_LIGHTDM=true to enable it."
+    die "config directory not found"
 fi
 
-# ---------- Fonts ----------
-echo "[6/12] Installing fonts (system + Nerd Fonts)..."
-sudo xbps-install -S font-dejavu font-noto-ttf font-awesome
-mkdir -p "$HOME/.local/share/fonts"
-
-# Nerd Fonts set
-pushd /tmp >/dev/null
-NF_URL="https://github.com/ryanoasis/nerd-fonts/releases/latest/download"
-declare -a NFONTS=("FiraCode" "JetBrainsMono" "Hack" "Meslo" "CascadiaCode")
-for nf in "${NFONTS[@]}"; do
-  if [ ! -f "${nf}.zip" ]; then
-    echo "  - Downloading ${nf} Nerd Font..."
-    wget -q "${NF_URL}/${nf}.zip" -O "${nf}.zip" || true
-    unzip -oq "${nf}.zip" -d "$HOME/.local/share/fonts" || true
-  fi
-done
-fc-cache -fv || true
-popd >/dev/null
-
-# ---------- Themes, Icons, Cursors ----------
-echo "[7/12] Installing GTK themes, icons, cursors..."
-mkdir -p "$HOME/.themes" "$HOME/.icons"
-
-# Orchis GTK theme
-if [ ! -d "$HOME/.themes/Orchis-theme" ]; then
-  git clone https://github.com/vinceliuice/Orchis-theme.git "$HOME/.themes/Orchis-theme"
-  "$HOME/.themes/Orchis-theme/install.sh" --theme dark || true
+# ---------------------------
+# Themes
+# ---------------------------
+if [ "$ONLY_CONFIG" = false ]; then
+    msg "Installing custom Openbox theme..."
+    mkdir -p ~/.themes
+    if [ -d "$SCRIPT_DIR/config/themes/Simply_Circles_Dark" ]; then
+        cp -r "$SCRIPT_DIR/config/themes/Simply_Circles_Dark" ~/.themes/
+    fi
 fi
 
-# Colloid icons
-if [ ! -d "$HOME/.icons/Colloid-icon-theme" ]; then
-  git clone https://github.com/vinceliuice/Colloid-icon-theme.git "$HOME/.icons/Colloid-icon-theme"
-  "$HOME/.icons/Colloid-icon-theme/install.sh" || true
+# ---------------------------
+# obmenu-generator
+# ---------------------------
+if [ "$ONLY_CONFIG" = false ]; then
+    msg "Installing obmenu-generator..."
+    mkdir -p "$TEMP_DIR"
+    cd "$TEMP_DIR"
+    git clone https://github.com/trizen/Linux-DesktopFiles.git || die "Failed to clone Linux-DesktopFiles"
+    cd Linux-DesktopFiles
+    perl Build.PL || die "Failed to configure Linux-DesktopFiles"
+    ./Build || die "Failed to build Linux-DesktopFiles"
+    ./Build test || msg "Warning: Tests failed but continuing..."
+    sudo ./Build install || die "Failed to install Linux-DesktopFiles"
+    cd "$TEMP_DIR"
+
+    mkdir -p ~/.local/bin/
+    mkdir -p ~/.config/obmenu-generator
+    git clone https://github.com/trizen/obmenu-generator.git
+    cp obmenu-generator/obmenu-generator ~/.local/bin/
+    if [ -f "$CONFIG_DIR/obmenu/schema.pl" ]; then
+        cp "$CONFIG_DIR/obmenu/schema.pl" ~/.config/obmenu-generator/
+    fi
+
+    export PATH="$HOME/.local/bin:$PATH"
+    if [ -n "$DISPLAY" ]; then
+        obmenu-generator -p -i || msg "Warning: Menu generation failed, will retry on first login"
+    else
+        msg "No X display found, skipping menu generation (will auto-generate on first login)"
+    fi
 fi
 
-# Papirus already installed via repo; add Bibata cursors
-if [ ! -d "$HOME/.icons/Bibata-Modern-Ice" ]; then
-  pushd /tmp >/dev/null
-  wget -q https://github.com/ful1e5/Bibata_Cursor/releases/latest/download/Bibata-Modern-Ice.tar.xz -O Bibata-Modern-Ice.tar.xz || true
-  mkdir -p "$HOME/.icons/Bibata-Modern-Ice"
-  tar -xJf Bibata-Modern-Ice.tar.xz -C "$HOME/.icons" || true
-  popd >/dev/null
+# ---------------------------
+# LXAppearance launcher
+# ---------------------------
+if [ "$ONLY_CONFIG" = false ]; then
+    msg "Creating lxappearance desktop launcher..."
+    desktop_file="$HOME/.local/share/applications/lxappearance.desktop"
+    mkdir -p "$(dirname "$desktop_file")"
+    cat > "$desktop_file" <<EOF
+[Desktop Entry]
+Name=Appearance
+Comment=Customize the look of your desktop
+Exec=lxappearance
+Icon=preferences-desktop-theme
+Terminal=false
+Type=Application
+Categories=Settings;GTK;X-XFCE;
+EOF
+    chmod +x "$desktop_file"
 fi
 
-# ---------- Zsh, Oh-My-Zsh, Starship ----------
-echo "[8/12] Configuring shell: zsh + oh-my-zsh + starship..."
-sudo xbps-install -S zsh starship
+# ---------------------------
+# Butterscripts
+# ---------------------------
+get_script() {
+    wget -qO- "https://raw.githubusercontent.com/drewgrif/butterscripts/main/$1" | bash
+}
 
-# oh-my-zsh unattended
-if [ ! -d "$HOME/.oh-my-zsh" ]; then
-  RUNZSH=no CHSH=no KEEP_ZSHRC=yes sh -c \
-    "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" \
-    || true
-fi
+if [ "$ONLY_CONFIG" = false ]; then
+    mkdir -p "$TEMP_DIR" && cd "$TEMP_DIR"
 
-# zsh plugins: zsh-autosuggestions, zsh-syntax-highlighting
-ZSH_CUSTOM="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
-mkdir -p "$ZSH_CUSTOM/plugins"
-if [ ! -d "$ZSH_CUSTOM/plugins/zsh-autosuggestions" ]; then
-  git clone https://github.com/zsh-users/zsh-autosuggestions "${ZSH_CUSTOM}/plugins/zsh-autosuggestions"
-fi
-if [ ! -d "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting" ]; then
-  git clone https://github.com/zsh-users/zsh-syntax-highlighting "${ZSH_CUSTOM}/plugins/zsh-syntax-highlighting"
-fi
+    msg "Installing picom..."
+    get_script "setup/install_picom.sh"
 
-# zshrc
-cat > "$HOME/.zshrc" <<'ZRC'
-# --- oh-my-zsh base ---
-export ZSH="$HOME/.oh-my-zsh"
-ZSH_THEME="agnoster"
-plugins=(git fzf zsh-autosuggestions zsh-syntax-highlighting)
-source $ZSH/oh-my-zsh.sh
-
-# --- starship ---
-eval "$(starship init zsh)"
-
-# --- aliases ---
-alias ll='ls -lh'
-alias la='ls -lah'
-alias v='nvim'
-alias grep='grep --color=auto'
-alias cat='bat 2>/dev/null || cat'
-alias update='sudo xbps-install -Su'
-
-# --- PATH for pipx / local bins ---
-export PATH="$HOME/.local/bin:$PATH"
-
-# --- fix key repeats in some terms (optional) ---
-export GTK_THEME=Orchis-Dark
-ZRC
-
-# change login shell (if running as real user and chsh exists)
-if have chsh && [ -w /etc/passwd ]; then
-  (chsh -s "$USER_SHELL" "$USER" 2>/dev/null) || true
-fi
-
-# ---------- Configs from repo ----------
-echo "[9/12] Deploying configs from repository (if available)..."
-mkdir -p "$HOME/.config" "$HOME/.config/openbox" "$HOME/.config/polybar" "$HOME/.config/picom"
-if [ -d "$REPO_DIR/config" ]; then
-  cp -rT "$REPO_DIR/config" "$HOME/.config"
-fi
-if [ -d "$REPO_DIR/openbox" ]; then
-  cp -rT "$REPO_DIR/openbox" "$HOME/.config/openbox"
-fi
-# Create sensible defaults if missing
-if [ ! -f "$HOME/.config/picom/picom.conf" ]; then
-  cat > "$HOME/.config/picom/picom.conf" <<'PIC'
-backend = "xrender";
-vsync = true;
-shadow = true;
-fading = true;
-inactive-opacity = 0.95;
-rounded-corners = true;
-PIC
-fi
-if [ ! -f "$HOME/.config/polybar/config.ini" ]; then
-  mkdir -p "$HOME/.config/polybar"
-  cat > "$HOME/.config/polybar/launch.sh" <<'PB'
-#!/bin/sh
-killall -q polybar
-while pgrep -u $UID -x polybar >/dev/null; do sleep 0.5; done
-polybar main &
-PB
-  chmod +x "$HOME/.config/polybar/launch.sh"
-  cat > "$HOME/.config/polybar/config.ini" <<'PBC'
-[bar/main]
-width = 100%
-height = 28
-modules-left = date
-modules-right = pulseaudio memory cpu
-font-0 = "FiraCode Nerd Font:size=10"
-[module/date]
-type = internal/date
-interval = 1
-date = %a %b %d %H:%M
-[module/pulseaudio]
-type = internal/pulseaudio
-[module/memory]
-type = internal/memory
-[module/cpu]
-type = internal/cpu
-PBC
-fi
-
-# Openbox autostart (ensure picom/polybar/nm-applet etc start)
-mkdir -p "$HOME/.config/openbox"
-if [ ! -f "$HOME/.config/openbox/autostart" ]; then
-  cat > "$HOME/.config/openbox/autostart"
+    msg "Installing wezterm..."
+    get_script "wezterm
